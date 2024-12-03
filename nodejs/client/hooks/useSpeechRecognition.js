@@ -1,17 +1,23 @@
-import { useRef, useCallback, useState } from 'react';
+// Import required React hooks
+import { useRef, useCallback, useState, useEffect } from 'react';
 
+// Custom hook for speech recognition functionality
 export const useSpeechRecognition = (onResult) => {
+  // State to track if speech recognition is active
   const [isListening, setIsListening] = useState(false);
+  // State to track if waiting for wake word
   const [isWaitingForWakeWord, setIsWaitingForWakeWord] = useState(true);
+  // Ref to store speech recognition instance
   const recognition = useRef(null);
 
+  // Initialize speech recognition with required settings
   const initializeRecognition = useCallback(() => {
     if (recognition.current) return;
+    
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     recognition.current = new SpeechRecognition();
     recognition.current.continuous = true;
-    recognition.current.interimResults = true;
-    recognition.current.maxAlternatives = 1;
+    recognition.current.interimResults = false;
     recognition.current.lang = 'en-US';
 
     recognition.current.onresult = (event) => {
@@ -25,66 +31,72 @@ export const useSpeechRecognition = (onResult) => {
           console.log('Wake word detected! Ready to chat.');
         }
       } else {
+        console.log('Sending to GPT:', transcript);
         onResult(transcript);
+        setIsWaitingForWakeWord(true);
       }
     };
 
     recognition.current.onend = () => {
+      console.log('Speech recognition ended');
       if (isListening) {
+        console.log('Restarting recognition because isListening is true');
         try {
           recognition.current.start();
         } catch (error) {
-          console.error('Error restarting recognition:', error);
+          console.error('Error in onend restart:', error);
           setIsListening(false);
-          setIsWaitingForWakeWord(true);
         }
-      } else {
-        setIsListening(false);
-        setIsWaitingForWakeWord(true);
       }
     };
 
     recognition.current.onerror = (event) => {
       console.error('Recognition error:', event.error);
-      setIsListening(false);
-      setIsWaitingForWakeWord(true);
+      if (event.error === 'not-allowed') {
+        setIsListening(false);
+      }
     };
-  }, [onResult, isListening, isWaitingForWakeWord]);
+  }, [onResult, isListening]);
 
   const startListening = useCallback(() => {
-    if (!recognition.current) return;
-    try {
-      recognition.current.start();
-      setIsListening(true);
-      setIsWaitingForWakeWord(true);
-    } catch (error) {
-      console.error('Error starting recognition:', error);
-      setIsListening(false);
-      setIsWaitingForWakeWord(true);
-      if (error.message.includes('already started')) {
-        recognition.current.stop();
-        setTimeout(() => {
-          try {
-            recognition.current.start();
-            setIsListening(true);
-            setIsWaitingForWakeWord(true);
-          } catch (e) {
-            console.error('Error restarting recognition:', e);
-          }
-        }, 100);
+    if (!recognition.current) {
+      initializeRecognition();
+    }
+
+    if (recognition.current && !isListening) {
+      try {
+        recognition.current.start();
+        setIsListening(true);
+        setIsWaitingForWakeWord(true);
+      } catch (error) {
+        console.error('Error in startListening:', error);
       }
     }
-  }, []);
+  }, [initializeRecognition, isListening]);
 
   const stopListening = useCallback(() => {
-    if (!recognition.current) return;
-    try {
-      recognition.current.stop();
-      setIsListening(false);
-      setIsWaitingForWakeWord(true);
-    } catch (error) {
-      console.error('Error stopping recognition:', error);
+    if (recognition.current && isListening) {
+      try {
+        recognition.current.stop();
+        setIsListening(false);
+        setIsWaitingForWakeWord(true);
+      } catch (error) {
+        console.error('Error in stopListening:', error);
+      }
     }
+  }, [isListening]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (recognition.current) {
+        try {
+          recognition.current.stop();
+        } catch (error) {
+          console.error('Error in cleanup:', error);
+        }
+      }
+    };
   }, []);
 
   return {

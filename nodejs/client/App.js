@@ -1,7 +1,10 @@
+// Import required React hooks and custom hook
 import React, { useState, useEffect, useRef } from 'react';
 import { useSpeechRecognition } from './hooks/useSpeechRecognition';
 
+// Main App component
 function App() {
+  // Initialize state variables using useState hook
   const [messages, setMessages] = useState(() => {
     const savedMessages = localStorage.getItem('chatMessages');
     return savedMessages ? JSON.parse(savedMessages) : [];
@@ -11,10 +14,9 @@ function App() {
   const [threadId, setThreadId] = useState(() => {
     return localStorage.getItem('threadId') || null;
   });
-  const [isWaitingForWakeWord, setIsWaitingForWakeWord] = useState(true);
   const chatEndRef = useRef(null);
 
-  // Load chat history when component mounts
+  // Load chat history when component mounts or threadId changes
   useEffect(() => {
     const loadChatHistory = async () => {
       if (threadId) {
@@ -57,12 +59,20 @@ function App() {
     };
 
     loadChatHistory();
-  }, []); // Run only once when component mounts
+  }, [threadId]); // Run when threadId changes
 
-  // Callback for speech recognition results
-  const onSpeechResult = (text) => {
-    setInput(text);
-    handleSend(text);
+  // Handle speech recognition results
+  const onSpeechResult = async (text) => {
+    if (!text.trim()) return;
+    
+    console.log('Processing speech input:', text);
+    
+    // Send directly to GPT
+    try {
+      await handleSend(text);
+    } catch (error) {
+      console.error('Error sending to GPT:', error);
+    }
   };
 
   // Initialize speech recognition using the custom hook
@@ -71,21 +81,40 @@ function App() {
     initializeRecognition,
     startListening,
     stopListening,
-    isWaitingForWakeWord: wakeWordStatus,
+    isWaitingForWakeWord,
   } = useSpeechRecognition(onSpeechResult);
 
+  // Initialize and auto-start speech recognition on component mount
   useEffect(() => {
-    initializeRecognition();
-  }, [initializeRecognition]);
+    const initialize = async () => {
+      await initializeRecognition();
+      // Only start listening if not already listening
+      if (!isListening) {
+        startListening();
+      }
+    };
+    
+    initialize();
+    
+    // Cleanup function
+    return () => {
+      if (isListening) {
+        stopListening();
+      }
+    };
+  }, []); // Empty dependency array since we only want this to run once on mount
 
+  // Auto-scroll to bottom when messages update
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Save messages to localStorage when they change
   useEffect(() => {
     localStorage.setItem('chatMessages', JSON.stringify(messages));
   }, [messages]);
 
+  // Save threadId to localStorage when it changes
   useEffect(() => {
     if (threadId) {
       localStorage.setItem('threadId', threadId);
@@ -94,6 +123,7 @@ function App() {
     }
   }, [threadId]);
 
+  // Handle sending messages to the server
   const handleSend = async (text = input) => {
     if (!text.trim()) return;
 
@@ -138,6 +168,7 @@ function App() {
     }
   };
 
+  // Clear chat history and remove from localStorage
   const handleClearChat = () => {
     setMessages([]);
     setThreadId(null);
@@ -145,19 +176,22 @@ function App() {
     localStorage.removeItem('threadId');
   };
 
+  // Render the chat interface
   return (
     <div className="App">
       <div style={{ maxWidth: '600px', margin: '0 auto', padding: '20px' }}>
         <h1 style={{ textAlign: 'center' }}>AI Assistant Chat</h1>
         
+        {/* Display wake word status */}
         <div style={{ 
           textAlign: 'center', 
           marginBottom: '10px',
-          color: wakeWordStatus ? '#666' : '#28a745'
+          color: isWaitingForWakeWord ? '#666' : '#28a745'
         }}>
-          {wakeWordStatus ? 'Waiting for "Hey Assistant"...' : 'Listening for commands...'}
+          {isWaitingForWakeWord ? 'Waiting for "Hey Assistant"...' : 'Listening for commands...'}
         </div>
 
+        {/* Clear chat button */}
         <button
           onClick={handleClearChat}
           style={{
@@ -173,6 +207,7 @@ function App() {
           Clear Chat
         </button>
 
+        {/* Chat messages container */}
         <div
           style={{
             border: '1px solid #ddd',
@@ -206,6 +241,8 @@ function App() {
           ))}
           <div ref={chatEndRef}></div>
         </div>
+
+        {/* Voice control buttons */}
         <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
           <button
             onClick={startListening}
@@ -236,6 +273,8 @@ function App() {
             Stop Listening
           </button>
         </div>
+
+        {/* Text input and send button */}
         <div style={{ display: 'flex', gap: '10px' }}>
           <input
             type="text"
