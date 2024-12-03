@@ -2,57 +2,72 @@ import { useRef, useCallback, useState } from 'react';
 
 export const useSpeechRecognition = (onResult) => {
   const [isListening, setIsListening] = useState(false);
+  const [isWaitingForWakeWord, setIsWaitingForWakeWord] = useState(true);
   const recognition = useRef(null);
 
   const initializeRecognition = useCallback(() => {
     if (recognition.current) return;
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     recognition.current = new SpeechRecognition();
-    recognition.current.continuous = true; // Changed to true to keep listening
-    recognition.current.interimResults = false;
+    recognition.current.continuous = true;
+    recognition.current.interimResults = true;
+    recognition.current.maxAlternatives = 1;
     recognition.current.lang = 'en-US';
 
     recognition.current.onresult = (event) => {
-      // Get the last result
       const lastResultIndex = event.results.length - 1;
-      const transcript = event.results[lastResultIndex][0].transcript;
-      onResult(transcript);
+      const transcript = event.results[lastResultIndex][0].transcript.trim().toLowerCase();
+      console.log('Detected speech:', transcript);
+      
+      if (isWaitingForWakeWord) {
+        if (transcript.includes('hey') && transcript.includes('assistant')) {
+          setIsWaitingForWakeWord(false);
+          console.log('Wake word detected! Ready to chat.');
+        }
+      } else {
+        onResult(transcript);
+      }
     };
 
     recognition.current.onend = () => {
-      // Automatically restart if still in listening mode
       if (isListening) {
         try {
           recognition.current.start();
         } catch (error) {
           console.error('Error restarting recognition:', error);
           setIsListening(false);
+          setIsWaitingForWakeWord(true);
         }
       } else {
         setIsListening(false);
+        setIsWaitingForWakeWord(true);
       }
     };
 
     recognition.current.onerror = (event) => {
       console.error('Recognition error:', event.error);
       setIsListening(false);
+      setIsWaitingForWakeWord(true);
     };
-  }, [onResult, isListening]);
+  }, [onResult, isListening, isWaitingForWakeWord]);
 
   const startListening = useCallback(() => {
     if (!recognition.current) return;
     try {
       recognition.current.start();
       setIsListening(true);
+      setIsWaitingForWakeWord(true);
     } catch (error) {
       console.error('Error starting recognition:', error);
       setIsListening(false);
+      setIsWaitingForWakeWord(true);
       if (error.message.includes('already started')) {
         recognition.current.stop();
         setTimeout(() => {
           try {
             recognition.current.start();
             setIsListening(true);
+            setIsWaitingForWakeWord(true);
           } catch (e) {
             console.error('Error restarting recognition:', e);
           }
@@ -66,6 +81,7 @@ export const useSpeechRecognition = (onResult) => {
     try {
       recognition.current.stop();
       setIsListening(false);
+      setIsWaitingForWakeWord(true);
     } catch (error) {
       console.error('Error stopping recognition:', error);
     }
@@ -76,5 +92,6 @@ export const useSpeechRecognition = (onResult) => {
     initializeRecognition,
     startListening,
     stopListening,
+    isWaitingForWakeWord,
   };
 };

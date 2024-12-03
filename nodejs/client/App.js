@@ -11,6 +11,7 @@ function App() {
   const [threadId, setThreadId] = useState(() => {
     return localStorage.getItem('threadId') || null;
   });
+  const [isWaitingForWakeWord, setIsWaitingForWakeWord] = useState(true);
   const chatEndRef = useRef(null);
 
   // Load chat history when component mounts
@@ -20,17 +21,28 @@ function App() {
         setIsLoading(true);
         try {
           const response = await fetch(`https://s4789280-triple-p-chat.uqcloud.net/api/chat/history/${threadId}`, {
+            method: 'GET',
             credentials: 'include',
             headers: {
-              'Accept': 'application/json'
+              'Accept': 'application/json',
+              'Content-Type': 'application/json'
             }
           });
+
+          // Check if redirected to login page
+          const contentType = response.headers.get('content-type');
+          if (contentType && contentType.includes('text/html')) {
+            console.log('Session expired or not authenticated');
+            setThreadId(null);
+            setMessages([]);
+            return;
+          }
 
           if (response.ok) {
             const data = await response.json();
             setMessages(data.messages || []);
           } else {
-            // If there's an error loading history, clear the stored thread
+            console.log('Error status:', response.status);
             setThreadId(null);
             setMessages([]);
           }
@@ -59,6 +71,7 @@ function App() {
     initializeRecognition,
     startListening,
     stopListening,
+    isWaitingForWakeWord: wakeWordStatus,
   } = useSpeechRecognition(onSpeechResult);
 
   useEffect(() => {
@@ -137,6 +150,14 @@ function App() {
       <div style={{ maxWidth: '600px', margin: '0 auto', padding: '20px' }}>
         <h1 style={{ textAlign: 'center' }}>AI Assistant Chat</h1>
         
+        <div style={{ 
+          textAlign: 'center', 
+          marginBottom: '10px',
+          color: wakeWordStatus ? '#666' : '#28a745'
+        }}>
+          {wakeWordStatus ? 'Waiting for "Hey Assistant"...' : 'Listening for commands...'}
+        </div>
+
         <button
           onClick={handleClearChat}
           style={{
