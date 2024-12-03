@@ -2,11 +2,50 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useSpeechRecognition } from './hooks/useSpeechRecognition';
 
 function App() {
-  const [messages, setMessages] = useState([]);
+  const [messages, setMessages] = useState(() => {
+    const savedMessages = localStorage.getItem('chatMessages');
+    return savedMessages ? JSON.parse(savedMessages) : [];
+  });
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [threadId, setThreadId] = useState(null);
+  const [threadId, setThreadId] = useState(() => {
+    return localStorage.getItem('threadId') || null;
+  });
   const chatEndRef = useRef(null);
+
+  // Load chat history when component mounts
+  useEffect(() => {
+    const loadChatHistory = async () => {
+      if (threadId) {
+        setIsLoading(true);
+        try {
+          const response = await fetch(`https://s4789280-triple-p-chat.uqcloud.net/api/chat/history/${threadId}`, {
+            credentials: 'include',
+            headers: {
+              'Accept': 'application/json'
+            }
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            setMessages(data.messages || []);
+          } else {
+            // If there's an error loading history, clear the stored thread
+            setThreadId(null);
+            setMessages([]);
+          }
+        } catch (error) {
+          console.error('Error loading chat history:', error);
+          setThreadId(null);
+          setMessages([]);
+        } finally {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    loadChatHistory();
+  }, []); // Run only once when component mounts
 
   // Callback for speech recognition results
   const onSpeechResult = (text) => {
@@ -29,6 +68,18 @@ function App() {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  useEffect(() => {
+    localStorage.setItem('chatMessages', JSON.stringify(messages));
+  }, [messages]);
+
+  useEffect(() => {
+    if (threadId) {
+      localStorage.setItem('threadId', threadId);
+    } else {
+      localStorage.removeItem('threadId');
+    }
+  }, [threadId]);
 
   const handleSend = async (text = input) => {
     if (!text.trim()) return;
@@ -77,6 +128,8 @@ function App() {
   const handleClearChat = () => {
     setMessages([]);
     setThreadId(null);
+    localStorage.removeItem('chatMessages');
+    localStorage.removeItem('threadId');
   };
 
   return (

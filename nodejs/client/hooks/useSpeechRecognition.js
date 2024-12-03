@@ -8,24 +8,36 @@ export const useSpeechRecognition = (onResult) => {
     if (recognition.current) return;
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     recognition.current = new SpeechRecognition();
-    recognition.current.continuous = false;
+    recognition.current.continuous = true; // Changed to true to keep listening
     recognition.current.interimResults = false;
     recognition.current.lang = 'en-US';
 
     recognition.current.onresult = (event) => {
-      const transcript = event.results[0][0].transcript;
+      // Get the last result
+      const lastResultIndex = event.results.length - 1;
+      const transcript = event.results[lastResultIndex][0].transcript;
       onResult(transcript);
     };
 
     recognition.current.onend = () => {
-      setIsListening(false);
+      // Automatically restart if still in listening mode
+      if (isListening) {
+        try {
+          recognition.current.start();
+        } catch (error) {
+          console.error('Error restarting recognition:', error);
+          setIsListening(false);
+        }
+      } else {
+        setIsListening(false);
+      }
     };
 
     recognition.current.onerror = (event) => {
       console.error('Recognition error:', event.error);
       setIsListening(false);
     };
-  }, [onResult]);
+  }, [onResult, isListening]);
 
   const startListening = useCallback(() => {
     if (!recognition.current) return;
